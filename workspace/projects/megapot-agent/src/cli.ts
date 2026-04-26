@@ -10,6 +10,7 @@ import {
   configureState,
   currentDrawing,
   history,
+  repairState,
   results,
   setup,
   status,
@@ -69,6 +70,11 @@ async function main() {
       return;
     case "history":
       json(await history());
+      return;
+    case "repair-state":
+      json(await repairState(config, {
+        clearLastSuccess: Boolean(flags["clear-last-success"])
+      }));
       return;
     case "claim":
       json(
@@ -199,6 +205,7 @@ function help() {
       "current-drawing",
       "results",
       "history",
+      "repair-state --clear-last-success",
       "claim --ticket-ids 1,2,3 --dry-run",
       "claim --ticket-ids 1,2,3 --yes"
     ],

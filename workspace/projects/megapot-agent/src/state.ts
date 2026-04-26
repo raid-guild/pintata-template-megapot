@@ -118,16 +118,13 @@ export async function writeState(state: LotteryState) {
 
 export async function appendJsonl(filePath: string, value: unknown) {
   await ensureDataDir();
-  await appendFile(filePath, `${safeStringify(value)}\n`);
+  await appendFile(filePath, `${jsonlStringify(value)}\n`);
 }
 
 export async function readJsonl<T>(filePath: string): Promise<T[]> {
   try {
     const raw = await readFile(filePath, "utf8");
-    return raw
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as T);
+    return parseJsonl<T>(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return [];
@@ -142,6 +139,101 @@ export function safeStringify(value: unknown) {
     (_key, innerValue) => (typeof innerValue === "bigint" ? innerValue.toString() : innerValue),
     2
   );
+}
+
+export function jsonlStringify(value: unknown) {
+  return JSON.stringify(value, (_key, innerValue) =>
+    typeof innerValue === "bigint" ? innerValue.toString() : innerValue
+  );
+}
+
+function parseJsonl<T>(raw: string): T[] {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  try {
+    return trimmed
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as T);
+  } catch (lineError) {
+    return parsePrettyJsonObjects<T>(trimmed, lineError);
+  }
+}
+
+function parsePrettyJsonObjects<T>(raw: string, originalError: unknown): T[] {
+  const records: T[] = [];
+  const decoder = new JSONDecoder(raw);
+
+  while (decoder.hasMore()) {
+    try {
+      records.push(decoder.readValue() as T);
+    } catch {
+      throw originalError;
+    }
+  }
+
+  return records;
+}
+
+class JSONDecoder {
+  private index = 0;
+
+  constructor(private readonly raw: string) {}
+
+  hasMore() {
+    this.skipWhitespace();
+    return this.index < this.raw.length;
+  }
+
+  readValue() {
+    this.skipWhitespace();
+    if (this.raw[this.index] !== "{") {
+      throw new Error("Expected JSON object");
+    }
+
+    const start = this.index;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (; this.index < this.raw.length; this.index += 1) {
+      const char = this.raw[this.index];
+
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (char === "\\") {
+          escaped = true;
+        } else if (char === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (char === "\"") {
+        inString = true;
+      } else if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          this.index += 1;
+          return JSON.parse(this.raw.slice(start, this.index));
+        }
+      }
+    }
+
+    throw new Error("Unterminated JSON object");
+  }
+
+  private skipWhitespace() {
+    while (this.index < this.raw.length && /\s/.test(this.raw[this.index])) {
+      this.index += 1;
+    }
+  }
 }
 
 export function denverDateKey(date = new Date()) {

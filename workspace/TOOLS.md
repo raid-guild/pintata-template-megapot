@@ -25,6 +25,7 @@ npm run cli -- <command>
 | `current-drawing` | Show current drawing details |
 | `results` | Store and show recent drawing information |
 | `history` | Show spend, claims, and purchase history |
+| `repair-state` | Clear bad local bookkeeping after an interrupted or reverted transaction |
 | `claim` | Claim winnings after confirmation |
 
 ## Examples
@@ -36,6 +37,7 @@ npm run cli -- configure --tickets 1 --mode manual --numbers 1,2,3,4,5:6 --resum
 npm run cli -- approve --spender random --yes
 npm run cli -- buy-daily
 npm run cli -- history
+npm run cli -- repair-state --clear-last-success
 ```
 
 `approve --spender random` approves the Random Ticket Buyer wrapper. The wrapper pulls USDC from the wallet, approves the Jackpot internally for the exact purchase, and generates random numbers. `approve --spender jackpot` approves the Jackpot directly for manual fixed-number purchases.

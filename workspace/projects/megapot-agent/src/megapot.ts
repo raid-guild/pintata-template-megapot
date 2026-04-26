@@ -311,6 +311,39 @@ export async function history() {
   };
 }
 
+export async function repairState(config: RuntimeConfig, options: { clearLastSuccess: boolean }) {
+  const state = await readState(config.referrer);
+
+  if (!options.clearLastSuccess) {
+    return {
+      ok: true,
+      command: "repair-state",
+      changed: false,
+      message: "No repair option selected.",
+      config: state
+    };
+  }
+
+  const next: LotteryState = {
+    ...state,
+    lastSuccessDate: undefined,
+    lastSuccessTxHash: undefined
+  };
+  await writeState(next);
+
+  return {
+    ok: true,
+    command: "repair-state",
+    changed: true,
+    cleared: ["lastSuccessDate", "lastSuccessTxHash"],
+    previous: {
+      lastSuccessDate: state.lastSuccessDate,
+      lastSuccessTxHash: state.lastSuccessTxHash
+    },
+    config: next
+  };
+}
+
 export async function claim(config: RuntimeConfig, ticketIds: bigint[], options: { dryRun: boolean; yes: boolean }) {
   const account = requireAccount(config);
   const publicClient = createBasePublicClient(config);
@@ -345,6 +378,17 @@ export async function claim(config: RuntimeConfig, ticketIds: bigint[], options:
   });
   const txHash = await walletClient.writeContract(request);
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+  if (receipt.status !== "success") {
+    return {
+      ok: false,
+      command: "claim",
+      txHash,
+      status: receipt.status,
+      message: "Claim transaction was submitted but reverted. No claim record was written."
+    };
+  }
+
   const record: ClaimRecord = {
     type: "claim",
     ticketIds: ticketIds.map(String),
@@ -395,6 +439,29 @@ async function executePurchase(config: RuntimeConfig, state: LotteryState, dateK
 
   const txHash = await walletClient.writeContract(simulation.request as never);
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+  if (receipt.status !== "success") {
+    await writeState({
+      ...state,
+      setupComplete: true,
+      lastAttemptDate: dateKey
+    });
+
+    return {
+      ok: false,
+      skipped: true,
+      reason: "transaction-reverted",
+      message: "Purchase transaction was submitted but reverted. No purchase record was written.",
+      command: adHoc ? "buy-now" : "buy-daily",
+      txHash,
+      status: receipt.status,
+      drawingId: drawing.drawingId,
+      ticketCount,
+      mode: state.mode || "random",
+      spendUsdc: usdc(spend)
+    };
+  }
+
   const ticketIds = (simulation.result as bigint[]).map(String);
   const record: PurchaseRecord = {
     type: "purchase",
