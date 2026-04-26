@@ -35,6 +35,7 @@ echo "Installing Lottery Agent helper dependencies..."
 npm ci --include=dev
 
 echo "Building Lottery Agent helper..."
+rm -rf dist
 npm run build
 
 if [ ! -f "dist/cli.js" ]; then
