@@ -12,6 +12,7 @@ import {
   DEFAULT_REFERRER,
   JACKPOT,
   JACKPOT_RANDOM_TICKET_BUYER,
+  PRECISE_UNIT,
   SOURCE,
   erc20Abi,
   jackpotAbi,
@@ -54,12 +55,12 @@ type DrawingState = {
 export type Spender = "random" | "jackpot";
 
 export function spenderAddress(spender: Spender) {
-  return JACKPOT;
+  return spender === "random" ? JACKPOT_RANDOM_TICKET_BUYER : JACKPOT;
 }
 
 export function spenderDescription(spender: Spender) {
   return spender === "random"
-    ? "Megapot Jackpot pulls USDC during random ticket purchases; the Random Ticket Buyer is only the wrapper called for random numbers."
+    ? "Random Ticket Buyer pulls USDC from the wallet, then approves the Megapot Jackpot internally for the exact random ticket purchase."
     : "Megapot Jackpot pulls USDC during manual ticket purchases.";
 }
 
@@ -368,7 +369,7 @@ async function executePurchase(config: RuntimeConfig, state: LotteryState, dateK
   const ticketCount = requireTicketCount(state);
   const spend = drawing.raw.ticketPrice * BigInt(ticketCount);
   const referrers = [state.referrer || config.referrer || DEFAULT_REFERRER];
-  const referralSplit = [10_000n];
+  const referralSplit = [PRECISE_UNIT];
   const walletClient = createWalletClient({
     account,
     chain: base,

@@ -9,6 +9,7 @@ export const JACKPOT_RANDOM_TICKET_BUYER = "0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaF
 export const JACKPOT_TICKET_NFT = "0x48FfE35AbB9f4780a4f1775C2Ce1c46185b366e4" as const satisfies Address;
 export const DEFAULT_REFERRER = "0x61d0c2aAb078b8c99F80D8B99D473dE84ec7B815" as const satisfies Address;
 export const SOURCE = "0x726169646775696c642d6c6f74746572792d6167656e74000000000000000000" as const;
+export const PRECISE_UNIT = 10n ** 18n;
 
 export const erc20Abi = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
@@ -30,7 +31,7 @@ export const jackpotAbi = parseAbi([
 ]);
 
 export const randomTicketBuyerAbi = parseAbi([
-  "function buyTickets(uint256 count, address recipient, address[] referrers, uint256[] referralSplitBps, bytes32 source) returns (uint256[] ticketIds)",
+  "function buyTickets(uint256 count, address recipient, address[] referrers, uint256[] referralSplit, bytes32 source) returns (uint256[] ticketIds)",
   "function jackpot() view returns (address)",
   "function nonce() view returns (uint256)",
   "function usdc() view returns (address)"

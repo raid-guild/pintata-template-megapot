@@ -1,4 +1,0 @@
-{
-  "compaction": "safeguard",
-  "maxConcurrent": 4
-}

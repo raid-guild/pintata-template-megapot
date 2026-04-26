@@ -38,7 +38,7 @@ npm run cli -- buy-daily
 npm run cli -- history
 ```
 
-`approve --spender random` and `approve --spender jackpot` both approve the Megapot Jackpot contract. Random purchases still call the Random Ticket Buyer wrapper, but the Jackpot is the USDC allowance target.
+`approve --spender random` approves the Random Ticket Buyer wrapper. The wrapper pulls USDC from the wallet, approves the Jackpot internally for the exact purchase, and generates random numbers. `approve --spender jackpot` approves the Jackpot directly for manual fixed-number purchases.
 
 ## Contracts
 
