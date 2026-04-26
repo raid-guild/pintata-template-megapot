@@ -2,7 +2,6 @@
 set -e
 
 PROJECT_DIR="workspace/projects/megapot-agent"
-FALLBACK_DIR="openclaw/actions-and-transactions/lottery-agent/workspace/projects/megapot-agent"
 REQUIRED_FILES=(
   "package.json"
   "package-lock.json"
@@ -16,15 +15,6 @@ REQUIRED_FILES=(
 )
 
 echo "Checking Lottery Agent helper project..."
-
-mkdir -p "$PROJECT_DIR"
-
-for file in "${REQUIRED_FILES[@]}"; do
-  if [ ! -f "$PROJECT_DIR/$file" ] && [ -f "$FALLBACK_DIR/$file" ]; then
-    mkdir -p "$(dirname "$PROJECT_DIR/$file")"
-    cp "$FALLBACK_DIR/$file" "$PROJECT_DIR/$file"
-  fi
-done
 
 missing=()
 for file in "${REQUIRED_FILES[@]}"; do
