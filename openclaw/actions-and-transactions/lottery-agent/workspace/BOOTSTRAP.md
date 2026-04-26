@@ -73,6 +73,8 @@ The default approval policy is a bounded one-week USDC allowance:
 
 Approval transactions always require explicit user confirmation. Never approve unlimited USDC.
 
+For both random and manual ticket purchases, the effective USDC spender is the Megapot Jackpot contract. Random mode still calls the Random Ticket Buyer wrapper to generate ticket numbers, but the Jackpot contract is the allowance target.
+
 When ready and confirmed, run one of:
 
 ```bash
@@ -80,7 +82,7 @@ npm run cli -- approve --spender random --yes
 npm run cli -- approve --spender jackpot --yes
 ```
 
-Use `random` for random tickets and `jackpot` for manual fixed-number tickets.
+Use `random` for random tickets and `jackpot` for manual fixed-number tickets. Both commands approve the bounded allowance to the Jackpot contract.
 
 ## Finish Setup
 

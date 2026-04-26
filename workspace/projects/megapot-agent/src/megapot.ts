@@ -54,7 +54,13 @@ type DrawingState = {
 export type Spender = "random" | "jackpot";
 
 export function spenderAddress(spender: Spender) {
-  return spender === "random" ? JACKPOT_RANDOM_TICKET_BUYER : JACKPOT;
+  return JACKPOT;
+}
+
+export function spenderDescription(spender: Spender) {
+  return spender === "random"
+    ? "Megapot Jackpot pulls USDC during random ticket purchases; the Random Ticket Buyer is only the wrapper called for random numbers."
+    : "Megapot Jackpot pulls USDC during manual ticket purchases.";
 }
 
 export async function setup(config: RuntimeConfig) {
@@ -187,6 +193,7 @@ export async function approve(config: RuntimeConfig, spender: Spender, options: 
       dryRun: true,
       spender,
       spenderAddress: spenderAddr,
+      spenderDescription: spenderDescription(spender),
       approvalUsdc: usdc(amount),
       policy: "7 * ticketCount * currentTicketPrice"
     };
@@ -213,6 +220,7 @@ export async function approve(config: RuntimeConfig, spender: Spender, options: 
     command: "approve",
     spender,
     spenderAddress: spenderAddr,
+    spenderDescription: spenderDescription(spender),
     approvalUsdc: usdc(amount),
     txHash,
     status: receipt.status
@@ -473,6 +481,7 @@ async function purchasePrecheck(config: RuntimeConfig, state: LotteryState, date
       updateAttempt: true,
       spender: spenderName,
       spenderAddress: spender,
+      spenderDescription: spenderDescription(spenderName),
       requiredUsdc: usdc(spend),
       allowanceUsdc: usdc(allowance)
     });

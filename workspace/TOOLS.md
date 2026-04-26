@@ -38,6 +38,8 @@ npm run cli -- buy-daily
 npm run cli -- history
 ```
 
+`approve --spender random` and `approve --spender jackpot` both approve the Megapot Jackpot contract. Random purchases still call the Random Ticket Buyer wrapper, but the Jackpot is the USDC allowance target.
+
 ## Contracts
 
 - Base chain ID: `8453`
