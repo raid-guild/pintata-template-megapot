@@ -52,6 +52,26 @@ export type ResultRecord = {
   timestamp: string;
 };
 
+export type HeartbeatIssue = {
+  key: string;
+  severity: "info" | "warning" | "error";
+  message: string;
+  details?: unknown;
+};
+
+export type ActiveHeartbeatIssue = {
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastSentAt?: string;
+  severity: HeartbeatIssue["severity"];
+  fingerprint: string;
+};
+
+export type HeartbeatState = {
+  activeIssues: Record<string, ActiveHeartbeatIssue>;
+  lastScanAt: string | null;
+};
+
 export function dataDir() {
   return process.env.LOTTERY_AGENT_DATA_DIR
     ? path.resolve(process.env.LOTTERY_AGENT_DATA_DIR)
@@ -72,6 +92,10 @@ export function claimsPath() {
 
 export function resultsPath() {
   return path.join(dataDir(), "results.jsonl");
+}
+
+export function heartbeatStatePath() {
+  return path.join(dataDir(), "heartbeat-state.json");
 }
 
 export async function ensureDataDir() {
@@ -131,6 +155,31 @@ export async function readJsonl<T>(filePath: string): Promise<T[]> {
     }
     throw error;
   }
+}
+
+export async function readHeartbeatState(): Promise<HeartbeatState> {
+  await ensureDataDir();
+  try {
+    const raw = await readFile(heartbeatStatePath(), "utf8");
+    const parsed = JSON.parse(raw) as HeartbeatState;
+    return {
+      activeIssues: parsed.activeIssues || {},
+      lastScanAt: parsed.lastScanAt || null
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        activeIssues: {},
+        lastScanAt: null
+      };
+    }
+    throw error;
+  }
+}
+
+export async function writeHeartbeatState(state: HeartbeatState) {
+  await ensureDataDir();
+  await writeFile(heartbeatStatePath(), `${JSON.stringify(state, null, 2)}\n`);
 }
 
 export function safeStringify(value: unknown) {

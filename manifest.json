@@ -44,7 +44,7 @@
   "tasks": [
     {
       "name": "daily-megapot-ticket-run",
-      "prompt": "Run the daily Megapot lottery workflow. Use the helper CLI in workspace/projects/megapot-agent. Check wallet balances, current drawing state, whether purchases are paused, and whether today's configured buy has already run. If active and funded, buy the configured tickets using the saved random/manual preference. Then check recent results, update local history files, and notify the user if action is needed or if they won. Never approve USDC or claim winnings without explicit user confirmation.",
+      "prompt": "Run the daily Megapot lottery heartbeat exactly once: cd workspace/projects/megapot-agent && npm run cli -- heartbeat. If the output status is HEARTBEAT_OK, do not message the user and do not rerun subcommands. If the output status is HEARTBEAT_ATTENTION, summarize only the notifications array. Never repeat suppressedIssues, never loop on the same issue, and never approve USDC or claim winnings from the heartbeat.",
       "schedule": "0 15 * * *",
       "enabled": true
     }

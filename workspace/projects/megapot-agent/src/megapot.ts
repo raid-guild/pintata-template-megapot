@@ -6,6 +6,7 @@ import {
   type Address,
   type Hex
 } from "viem";
+import { createHash } from "node:crypto";
 import { base } from "viem/chains";
 import {
   BASE_USDC,
@@ -23,11 +24,15 @@ import {
   appendJsonl,
   claimsPath,
   denverDateKey,
+  readHeartbeatState,
   purchasesPath,
   readJsonl,
   readState,
   resultsPath,
+  writeHeartbeatState,
   writeState,
+  type HeartbeatIssue,
+  type HeartbeatState,
   type ClaimRecord,
   type LotteryState,
   type PurchaseRecord,
@@ -240,6 +245,51 @@ export async function buyDaily(config: RuntimeConfig) {
   }
 
   return executePurchase(config, state, dateKey, false);
+}
+
+export async function heartbeat(config: RuntimeConfig) {
+  const commandResults: Record<string, unknown> = {};
+  const issues: HeartbeatIssue[] = [];
+
+  const statusResult = await captureHeartbeatStep("status", () => status(config), issues);
+  commandResults.status = summarizeHeartbeatResult(statusResult);
+
+  if (shouldRunHeartbeatBuy(statusResult)) {
+    const buyResult = await captureHeartbeatStep("buy-daily", () => buyDaily(config), issues);
+    commandResults.buyDaily = summarizeHeartbeatResult(buyResult);
+  } else {
+    commandResults.buyDaily = {
+      ok: true,
+      skipped: true,
+      reason: "status-not-ready"
+    };
+  }
+
+  if (isRecord(statusResult) && statusResult.ok !== false) {
+    const resultsResult = await captureHeartbeatStep("results", () => results(config), issues);
+    commandResults.results = summarizeHeartbeatResult(resultsResult);
+  } else {
+    commandResults.results = {
+      ok: true,
+      skipped: true,
+      reason: "status-failed"
+    };
+  }
+
+  const historyResult = await captureHeartbeatStep("history", () => history(), issues);
+  commandResults.history = summarizeHeartbeatResult(historyResult);
+
+  const heartbeatState = await updateHeartbeatIssues(issues);
+
+  return {
+    ok: true,
+    command: "heartbeat",
+    status: heartbeatState.notifications.length === 0 ? "HEARTBEAT_OK" : "HEARTBEAT_ATTENTION",
+    notifications: heartbeatState.notifications,
+    suppressedIssues: heartbeatState.suppressed,
+    issueCount: issues.length,
+    commands: commandResults
+  };
 }
 
 export async function buyNow(config: RuntimeConfig, options: { dryRun: boolean; yes: boolean }) {
@@ -495,12 +545,10 @@ async function executePurchase(config: RuntimeConfig, state: LotteryState, dateK
 async function purchasePrecheck(config: RuntimeConfig, state: LotteryState, dateKey: string, adHoc: boolean) {
   const account = requireAccount(config);
   const publicClient = createBasePublicClient(config);
-  const drawing = await getCurrentDrawing(config);
   const ticketCount = state.ticketCount || 0;
   const mode = state.mode;
   const spenderName: Spender = mode === "manual" ? "jackpot" : "random";
   const spender = spenderAddress(spenderName);
-  const spend = drawing.raw.ticketPrice * BigInt(ticketCount || 0);
 
   if (!state.setupComplete || !ticketCount || !mode) {
     return skipped("setup-incomplete", "Daily purchase is not configured yet", { updateAttempt: false });
@@ -514,6 +562,15 @@ async function purchasePrecheck(config: RuntimeConfig, state: LotteryState, date
       txHash: state.lastSuccessTxHash
     });
   }
+  if (!adHoc && state.lastAttemptDate === dateKey) {
+    return skipped("already-attempted-today", "Daily purchase already attempted for this Mountain-time date", {
+      updateAttempt: false
+    });
+  }
+
+  const drawing = await getCurrentDrawing(config);
+  const spend = drawing.raw.ticketPrice * BigInt(ticketCount || 0);
+
   if (drawing.raw.jackpotLock) {
     return skipped("jackpot-locked", "Megapot is currently locked for drawing", { updateAttempt: true });
   }
@@ -667,4 +724,224 @@ function toContractTickets(tickets: Ticket[]) {
 function parseUsdcString(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+async function captureHeartbeatStep(
+  command: string,
+  run: () => Promise<unknown>,
+  issues: HeartbeatIssue[]
+) {
+  try {
+    const result = await run();
+    collectIssueFromResult(command, result, issues);
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const normalized = normalizeHeartbeatError(message);
+    issues.push({
+      key: `${command}:exception:${normalized.key}`,
+      severity: "error",
+      message: `${command} failed: ${normalized.message}`
+    });
+    return {
+      ok: false,
+      command,
+      error: normalized.message
+    };
+  }
+}
+
+function shouldRunHeartbeatBuy(statusResult: unknown) {
+  if (!isRecord(statusResult) || statusResult.ok === false) {
+    return false;
+  }
+
+  const wallet = isRecord(statusResult.wallet) ? statusResult.wallet : undefined;
+  return !wallet?.missingSecret;
+}
+
+function summarizeHeartbeatResult(result: unknown) {
+  if (!isRecord(result)) {
+    return { ok: true };
+  }
+
+  const summary: Record<string, unknown> = {
+    ok: result.ok !== false
+  };
+
+  for (const key of ["command", "skipped", "reason", "message", "status", "txHash", "drawingId", "ticketCount", "mode", "spendUsdc", "error"]) {
+    if (result[key] !== undefined) {
+      summary[key] = result[key];
+    }
+  }
+
+  if (isRecord(result.wallet)) {
+    summary.wallet = {
+      address: result.wallet.address,
+      missingSecret: result.wallet.missingSecret,
+      baseEth: result.wallet.baseEth,
+      usdc: result.wallet.usdc
+    };
+  }
+
+  if (isRecord(result.currentDrawing)) {
+    summary.currentDrawing = {
+      drawingId: result.currentDrawing.drawingId,
+      drawingTimeIso: result.currentDrawing.drawingTimeIso,
+      jackpotLock: result.currentDrawing.jackpotLock
+    };
+  }
+
+  if (isRecord(result.totals)) {
+    summary.totals = result.totals;
+  }
+
+  if (isRecord(result.recorded)) {
+    summary.recorded = {
+      type: result.recorded.type,
+      drawingId: result.recorded.drawingId,
+      timestamp: result.recorded.timestamp
+    };
+  }
+
+  return summary;
+}
+
+function collectIssueFromResult(command: string, result: unknown, issues: HeartbeatIssue[]) {
+  if (!isRecord(result)) {
+    return;
+  }
+
+  if (result.ok === false) {
+    const reason = typeof result.reason === "string" ? result.reason : "failed";
+    const severity = reason === "paused" || reason === "already-bought-today" || reason === "already-attempted-today"
+      ? "info"
+      : "error";
+    const message = typeof result.message === "string" ? result.message : `${command} needs attention`;
+    const drawingId = typeof result.drawingId === "string" ? result.drawingId : undefined;
+    issues.push({
+      key: [command, reason, drawingId].filter(Boolean).join(":"),
+      severity,
+      message,
+      details: result
+    });
+  }
+
+  if (command === "status") {
+    const wallet = isRecord(result.wallet) ? result.wallet : undefined;
+    if (wallet?.missingSecret) {
+      issues.push({
+        key: "status:missing-secret:BASE_PRIVATE_KEY",
+        severity: "error",
+        message: "BASE_PRIVATE_KEY is missing. Add it through Pinata Secrets."
+      });
+    }
+  }
+}
+
+async function updateHeartbeatIssues(issues: HeartbeatIssue[]) {
+  const previous = await readHeartbeatState();
+  const now = new Date().toISOString();
+  const currentKeys = new Set(issues.map((issue) => issue.key));
+  const next: HeartbeatState = {
+    activeIssues: {},
+    lastScanAt: now
+  };
+  const notifications: HeartbeatIssue[] = [];
+  const suppressed: string[] = [];
+
+  for (const issue of issues) {
+    const prev = previous.activeIssues[issue.key];
+    const currentFingerprint = fingerprint(JSON.stringify({
+      severity: issue.severity,
+      message: issue.message,
+      details: stableHeartbeatDetails(issue.details)
+    }, (_key, value) => (typeof value === "bigint" ? value.toString() : value)));
+    const shouldSend = shouldSendHeartbeatIssue(issue, currentFingerprint, prev);
+
+    next.activeIssues[issue.key] = {
+      firstSeenAt: prev?.firstSeenAt || now,
+      lastSeenAt: now,
+      lastSentAt: shouldSend ? now : prev?.lastSentAt,
+      severity: issue.severity,
+      fingerprint: currentFingerprint
+    };
+
+    if (shouldSend) {
+      notifications.push(issue);
+    } else {
+      suppressed.push(issue.key);
+    }
+  }
+
+  for (const [key, issue] of Object.entries(previous.activeIssues)) {
+    if (!currentKeys.has(key)) {
+      continue;
+    }
+    next.activeIssues[key] = next.activeIssues[key] || issue;
+  }
+
+  await writeHeartbeatState(next);
+  return { notifications, suppressed };
+}
+
+function shouldSendHeartbeatIssue(
+  issue: HeartbeatIssue,
+  currentFingerprint: string,
+  previous?: HeartbeatState["activeIssues"][string]
+) {
+  if (!previous) {
+    return true;
+  }
+  if (previous.severity !== issue.severity) {
+    return true;
+  }
+  if (previous.fingerprint !== currentFingerprint) {
+    return true;
+  }
+
+  const lastSentAt = previous.lastSentAt ? Date.parse(previous.lastSentAt) : 0;
+  const cooldownMs = 12 * 60 * 60 * 1000;
+  return Date.now() - lastSentAt > cooldownMs;
+}
+
+function fingerprint(value: string) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
+function normalizeHeartbeatError(message: string) {
+  if (message.includes("over rate limit")) {
+    return {
+      key: "rpc-over-rate-limit",
+      message: "RPC provider is over rate limit. Set BASE_RPC_URL to a dedicated Base RPC or wait for the cooldown."
+    };
+  }
+  if (message.includes("BASE_PRIVATE_KEY is missing")) {
+    return {
+      key: "missing-secret:BASE_PRIVATE_KEY",
+      message: "BASE_PRIVATE_KEY is missing. Add it through Pinata Secrets."
+    };
+  }
+  return {
+    key: fingerprint(message),
+    message
+  };
+}
+
+function stableHeartbeatDetails(details: unknown) {
+  if (!isRecord(details)) {
+    return details;
+  }
+
+  const stable: Record<string, unknown> = {};
+  for (const key of ["command", "reason", "message", "status", "drawingId", "ticketCount", "mode", "spendUsdc", "spender", "spenderAddress", "requiredUsdc", "allowanceUsdc", "balanceUsdc"]) {
+    if (details[key] !== undefined) {
+      stable[key] = details[key];
+    }
+  }
+  return stable;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

@@ -23,6 +23,7 @@ npm run cli -- <command>
 | `buy-daily` | Run the scheduled daily purchase workflow |
 | `buy-now` | Run an ad hoc purchase after confirmation |
 | `current-drawing` | Show current drawing details |
+| `heartbeat` | Run the scheduled workflow once with issue dedupe |
 | `results` | Store and show recent drawing information |
 | `history` | Show spend, claims, and purchase history |
 | `repair-state` | Clear bad local bookkeeping after an interrupted or reverted transaction |
@@ -35,10 +36,13 @@ npm run cli -- status
 npm run cli -- configure --tickets 3 --mode random --resume
 npm run cli -- configure --tickets 1 --mode manual --numbers 1,2,3,4,5:6 --resume
 npm run cli -- approve --spender random --yes
+npm run cli -- heartbeat
 npm run cli -- buy-daily
 npm run cli -- history
 npm run cli -- repair-state --clear-last-success
 ```
+
+For scheduled tasks, prefer `heartbeat` over manually chaining `status`, `buy-daily`, `results`, and `history`. If `heartbeat` returns `HEARTBEAT_OK`, do not notify the user or rerun checks. If it returns `HEARTBEAT_ATTENTION`, summarize only `notifications`; ignore `suppressedIssues`.
 
 `approve --spender random` approves the Random Ticket Buyer wrapper. The wrapper pulls USDC from the wallet, approves the Jackpot internally for the exact purchase, and generates random numbers. `approve --spender jackpot` approves the Jackpot directly for manual fixed-number purchases.
 

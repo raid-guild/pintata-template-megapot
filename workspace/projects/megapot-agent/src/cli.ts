@@ -9,6 +9,7 @@ import {
   claim,
   configureState,
   currentDrawing,
+  heartbeat,
   history,
   repairState,
   results,
@@ -64,6 +65,9 @@ async function main() {
       return;
     case "current-drawing":
       json(await currentDrawing(config));
+      return;
+    case "heartbeat":
+      json(await heartbeat(config));
       return;
     case "results":
       json(await results(config));
@@ -203,6 +207,7 @@ function help() {
       "buy-now --dry-run",
       "buy-now --yes",
       "current-drawing",
+      "heartbeat",
       "results",
       "history",
       "repair-state --clear-last-success",
